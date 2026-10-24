@@ -1,598 +1,290 @@
-import io
+import time
+import random
+from datetime import datetime
+
 import numpy as np
 import pandas as pd
-import streamlit as st
 import plotly.express as px
-from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import StandardScaler
+import streamlit as st
 
-# ==================================================
-# PAGE CONFIGURATION
-# ==================================================
 st.set_page_config(
     page_title="ShadowPulse AI",
     page_icon="⚡",
     layout="wide"
 )
 
-# ==================================================
-# HIGH-CONTRAST DASHBOARD DESIGN
-# ==================================================
+# ---------- CONTRASTING DASHBOARD STYLE ----------
 st.markdown("""
 <style>
 .stApp {
-    background-color: #080F1E;
-    color: #F8FAFC;
+    background: #071321;
+    color: #F4F7FB;
 }
 [data-testid="stSidebar"] {
-    background-color: #111C30;
+    background: #10243A;
 }
-h1, h2, h3, p, label, li {
-    color: #F8FAFC !important;
+h1, h2, h3, p, label {
+    color: #F4F7FB;
 }
 [data-testid="stMetric"] {
-    background: #162641;
-    border: 1px solid #405778;
+    background: #102B46;
     padding: 18px;
     border-radius: 12px;
-}
-[data-testid="stMetricLabel"] {
-    color: #CBD5E1 !important;
+    border: 1px solid #284966;
 }
 [data-testid="stMetricValue"] {
-    color: #FFFFFF !important;
+    color: #4DE2C5;
 }
-div.stButton > button {
-    background-color: #2563EB;
-    color: #FFFFFF;
-    border: 1px solid #60A5FA;
+.stButton > button {
+    background: #4DE2C5;
+    color: #071321;
     border-radius: 8px;
+    border: none;
     font-weight: bold;
-    min-height: 44px;
-}
-div.stButton > button:hover {
-    background-color: #1D4ED8;
-    color: #FFFFFF;
-}
-[data-testid="stFileUploader"] {
-    background: #111C30;
-    border: 1px dashed #60A5FA;
-    padding: 12px;
-    border-radius: 12px;
+    width: 100%;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ==================================================
-# HEADER
-# ==================================================
+# ---------- HEADER ----------
 st.title("⚡ ShadowPulse AI")
-st.subheader("Intelligent Energy Simulation & Risk Monitoring")
-st.write(
-    "Upload your sensor dataset, simulate unusual operating "
-    "conditions, and compare the results using Machine Learning."
-)
-
+st.subheader("Virtual Electrical Load Monitoring & Anomaly Detection")
 st.caption(
-    "Simulation prototype | Python | Streamlit | Isolation Forest"
+    "ESP32 Wokwi-inspired simulation | Synthetic readings only | "
+    "Not connected to a physical sensor"
 )
 
-# ==================================================
-# SIDEBAR
-# ==================================================
-with st.sidebar:
-    st.title("⚡ ShadowPulse AI")
-    st.divider()
+# ---------- SIDEBAR ----------
+st.sidebar.title("Simulation Controls")
 
-    st.subheader("Simulation Controls")
-
-    anomaly_percent = st.slider(
-        "Percentage of readings to modify",
-        min_value=1,
-        max_value=30,
-        value=10,
-        step=1
-    )
-
-    severity = st.slider(
-        "Simulation severity",
-        min_value=1.0,
-        max_value=5.0,
-        value=2.0,
-        step=0.5
-    )
-
-    contamination = st.slider(
-        "Expected ML outlier proportion (%)",
-        min_value=1,
-        max_value=15,
-        value=3
-    )
-
-    st.divider()
-    st.caption(
-        "These settings control a software simulation. "
-        "No physical sensor is connected."
-    )
-
-# ==================================================
-# FILE UPLOAD
-# ==================================================
-st.header("📁 Step 1: Upload Your Dataset")
-
-uploaded_file = st.file_uploader(
-    "Choose a sensor data CSV file",
-    type=["csv"]
+load_name = st.sidebar.selectbox(
+    "Choose load category",
+    ["Auto Detect", "Lamp-like", "Fan-like", "Motor-like"]
 )
 
-if uploaded_file is None:
-    st.info(
-        "Upload a CSV file to begin. No simulation or risk "
-        "classification will run before you upload data."
-    )
-
-    st.subheader("Example CSV structure")
-
-    example = pd.DataFrame({
-        "Voltage": [12.0, 12.1, 11.9, 12.2, 12.0],
-        "Current": [0.50, 0.52, 0.48, 0.51, 0.49],
-        "Power": [6.00, 6.29, 5.71, 6.22, 5.88]
-    })
-
-    st.dataframe(example, use_container_width=True)
-
-    st.stop()
-
-# ==================================================
-# READ FILE
-# ==================================================
-try:
-    raw_df = pd.read_csv(uploaded_file)
-except Exception as exc:
-    st.error(f"Unable to read CSV: {exc}")
-    st.stop()
-
-raw_df.columns = [str(c).strip() for c in raw_df.columns]
-raw_df = raw_df.dropna(how="all").reset_index(drop=True)
-
-if raw_df.empty:
-    st.error("The uploaded CSV file is empty.")
-    st.stop()
-
-st.success(f"Uploaded successfully: {uploaded_file.name}")
-
-st.subheader("📄 Step 2: Preview Your Data")
-
-st.write(
-    f"Rows: **{len(raw_df)}** | "
-    f"Columns: **{len(raw_df.columns)}**"
+simulation_mode = st.sidebar.selectbox(
+    "Simulation scenario",
+    [
+        "Normal Operation",
+        "Variable Input",
+        "Unusual Input"
+    ]
 )
 
-st.dataframe(
-    raw_df.head(10),
-    use_container_width=True,
-    hide_index=True
+reading_count = st.sidebar.slider(
+    "Number of readings",
+    min_value=10,
+    max_value=100,
+    value=30,
+    step=10
 )
 
-# ==================================================
-# NUMERIC COLUMN SELECTION
-# ==================================================
-st.header("🔧 Step 3: Select Sensor Measurements")
+run_button = st.sidebar.button("▶ Run Simulation")
+st.sidebar.caption("Each reading represents one simulated second.")
 
-excluded_words = [
-    "timestamp", "datetime", "date", "time",
-    "recordid", "label", "status", "class"
-]
+# ---------- SENSOR SIMULATION ----------
+def generate_readings(count, scenario):
+    rows = []
+    raw_values = []
 
-numeric_options = []
-
-for col in raw_df.columns:
-    name = str(col).lower().replace("_", "").replace(" ", "")
-
-    if any(word in name for word in excluded_words):
-        continue
-
-    converted = pd.to_numeric(raw_df[col], errors="coerce")
-
-    if converted.notna().sum() >= 5 and converted.nunique() > 1:
-        numeric_options.append(col)
-
-if not numeric_options:
-    st.error(
-        "No usable numeric sensor columns found. "
-        "Please upload a CSV with at least 5 numeric readings "
-        "in a measurement column."
-    )
-    st.stop()
-
-default_cols = [
-    col for col in numeric_options
-    if any(word in str(col).lower()
-           for word in ["voltage", "current", "power", "watt"])
-]
-
-if not default_cols:
-    default_cols = numeric_options[:min(3, len(numeric_options))]
-
-selected_columns = st.multiselect(
-    "Choose columns for ML analysis",
-    options=numeric_options,
-    default=default_cols
-)
-
-if not selected_columns:
-    st.warning("Select at least one numeric sensor column.")
-    st.stop()
-
-# ==================================================
-# PREPARE DATA
-# ==================================================
-working_df = raw_df[selected_columns].copy()
-
-for col in selected_columns:
-    working_df[col] = pd.to_numeric(
-        working_df[col], errors="coerce"
-    )
-
-working_df = working_df.replace(
-    [np.inf, -np.inf], np.nan
-)
-
-valid_mask = working_df.notna().all(axis=1)
-
-original = working_df.loc[valid_mask].reset_index(drop=True)
-
-if len(original) < 5:
-    st.error(
-        "At least 5 complete numeric readings are required "
-        "after removing empty or invalid rows."
-    )
-    st.stop()
-
-if len(original) > 100000:
-    st.error(
-        "This demo supports up to 100,000 complete readings. "
-        "Please upload a smaller CSV file."
-    )
-    st.stop()
-
-if (original.nunique() <= 1).all():
-    st.error(
-        "All selected measurements are constant. "
-        "Choose columns containing varied readings."
-    )
-    st.stop()
-
-st.info(
-    f"{len(original)} complete readings will be used for simulation."
-)
-
-# ==================================================
-# RUN SIMULATION
-# ==================================================
-st.header("🚀 Step 4: Run Simulation")
-
-st.write(
-    f"The simulation will modify approximately "
-    f"**{anomaly_percent}%** of the uploaded readings, "
-    f"with a severity setting of **{severity:.1f}×**."
-)
-
-run_simulation = st.button(
-    "▶ Run Simulation & Detect Anomalies",
-    type="primary",
-    use_container_width=True
-)
-
-if run_simulation:
-    try:
-        # Reproducible simulation for consistent demonstrations
-        rng = np.random.default_rng(42)
-
-        simulated = original.copy()
-        row_count = len(original)
-
-        # Select rows from the uploaded dataset
-        number_to_modify = max(
-            1,
-            int(round(row_count * anomaly_percent / 100))
-        )
-        number_to_modify = min(number_to_modify, row_count)
-
-        modified_rows = np.sort(
-            rng.choice(
-                row_count,
-                size=number_to_modify,
-                replace=False
-            )
-        )
-
-        # Modify selected measurements relative to the
-        # uploaded data's own variation.
-        for col in selected_columns:
-            std_dev = original[col].std()
-
-            if pd.isna(std_dev) or std_dev == 0:
-                continue
-
-            directions = rng.choice(
-                [-1.0, 1.0],
-                size=number_to_modify
-            )
-
-            changes = directions * std_dev * severity
-
-            simulated.loc[modified_rows, col] = (
-                original.loc[modified_rows, col].to_numpy()
-                + changes
-            )
-
-        # Scale features for ML
-        scaler = StandardScaler()
-
-        scaled_original = scaler.fit_transform(original)
-        scaled_simulated = scaler.transform(simulated)
-
-        # Train on the uploaded dataset and score both datasets
-        model = IsolationForest(
-            n_estimators=200,
-            contamination=contamination / 100.0,
-            random_state=42
-        )
-
-        model.fit(scaled_original)
-
-        original_predictions = model.predict(scaled_original)
-        simulated_predictions = model.predict(scaled_simulated)
-
-        original_scores = model.decision_function(scaled_original)
-        simulated_scores = model.decision_function(scaled_simulated)
-
-        # Build results
-        results = simulated.copy()
-
-        results.insert(
-            0, "Reading Number", np.arange(1, row_count + 1)
-        )
-
-        results["Scenario"] = "Original / Unmodified"
-
-        results.loc[modified_rows, "Scenario"] = (
-            "Simulated Change"
-        )
-
-        results["Original ML Result"] = np.where(
-            original_predictions == -1,
-            "Unusual",
-            "Normal"
-        )
-
-        results["Simulated ML Result"] = np.where(
-            simulated_predictions == -1,
-            "Unusual",
-            "Normal"
-        )
-
-        results["Original ML Score"] = np.round(
-            original_scores, 4
-        )
-
-        results["Simulated ML Score"] = np.round(
-            simulated_scores, 4
-        )
-
-        results["Injected Change"] = "No"
-
-        results.loc[modified_rows, "Injected Change"] = "Yes"
-
-        # Demo risk category based on fraction flagged by ML.
-        flagged_percent = (
-            np.mean(simulated_predictions == -1) * 100
-        )
-
-        if flagged_percent >= 15:
-            risk_level = "HIGH"
-        elif flagged_percent >= 5:
-            risk_level = "MEDIUM"
+    for i in range(count):
+        # Simulates ESP32 analogRead(GPIO 32), 12-bit range
+        if scenario == "Normal Operation":
+            raw = random.randint(250, 2100)
+        elif scenario == "Variable Input":
+            raw = random.randint(500, 3000)
         else:
-            risk_level = "LOW"
+            # Generate some high inputs to demonstrate alerts
+            if random.random() < 0.45:
+                raw = random.randint(2500, 4095)
+            else:
+                raw = random.randint(800, 2500)
 
-        st.session_state["sp_results"] = results
-        st.session_state["sp_filename"] = uploaded_file.name
-        st.session_state["sp_selected"] = list(selected_columns)
-        st.session_state["sp_modified"] = int(number_to_modify)
-        st.session_state["sp_flagged"] = int(
-            np.sum(simulated_predictions == -1)
+        # Same conversion idea as the Wokwi sketch
+        current = (raw / 4095.0) * 1.5
+        voltage = 5.0
+        power = voltage * current
+
+        if current < 0.28:
+            detected_load = "Lamp-like"
+        elif current < 0.48:
+            detected_load = "Fan-like"
+        else:
+            detected_load = "Motor-like"
+
+        anomaly = current > 0.90
+        status = "UNUSUAL INPUT" if anomaly else "Normal"
+
+        rows.append({
+            "Reading": i + 1,
+            "Raw ADC": raw,
+            "Current (A)": round(current, 3),
+            "Voltage (V)": voltage,
+            "Power (W)": round(power, 3),
+            "Detected Category": detected_load,
+            "Status": status
+        })
+        raw_values.append(raw)
+
+    return pd.DataFrame(rows)
+
+# ---------- RUN AND SAVE RESULTS ----------
+if "history" not in st.session_state:
+    st.session_state.history = pd.DataFrame()
+
+if run_button:
+    st.session_state.current_data = generate_readings(
+        reading_count, simulation_mode
+    )
+    st.session_state.last_run = datetime.now().strftime(
+        "%d-%m-%Y %H:%M:%S"
+    )
+    st.session_state.last_scenario = simulation_mode
+
+if "current_data" not in st.session_state:
+    st.session_state.current_data = generate_readings(
+        reading_count, "Normal Operation"
+    )
+    st.session_state.last_run = "Preview only"
+    st.session_state.last_scenario = "Normal Operation"
+
+df = st.session_state.current_data.copy()
+
+# ---------- FILTER DISPLAY CATEGORY ----------
+if load_name != "Auto Detect":
+    display_df = df[df["Detected Category"] == load_name].copy()
+    if display_df.empty:
+        display_df = df.copy()
+        st.info(
+            "No readings matched that category in this run. "
+            "Showing all readings instead."
         )
-        st.session_state["sp_original_flagged"] = int(
-            np.sum(original_predictions == -1)
-        )
-        st.session_state["sp_risk"] = risk_level
-        st.session_state["sp_anomaly_percent"] = anomaly_percent
-        st.session_state["sp_severity"] = severity
+else:
+    display_df = df.copy()
 
-    except Exception as exc:
-        st.error(f"Simulation failed: {exc}")
+# ---------- METRICS ----------
+total = len(df)
+alerts = int((df["Status"] == "UNUSUAL INPUT").sum())
+normal = total - alerts
+alert_percentage = (alerts / total * 100) if total else 0
+avg_current = df["Current (A)"].mean()
+max_current = df["Current (A)"].max()
+avg_power = df["Power (W)"].mean()
 
-# ==================================================
-# DISPLAY RESULTS
-# ==================================================
-if (
-    "sp_results" in st.session_state
-    and st.session_state.get("sp_filename") == uploaded_file.name
-    and st.session_state.get("sp_selected") == list(selected_columns)
-):
-    results = st.session_state["sp_results"]
+if max_current > 0.90:
+    overall_status = "UNUSUAL INPUT"
+else:
+    overall_status = "Normal"
 
-    st.divider()
-    st.header("📊 Step 5: Simulation Results")
+st.markdown("### Live Simulation Summary")
 
-    total = len(results)
-    flagged = st.session_state["sp_flagged"]
-    baseline_flagged = st.session_state["sp_original_flagged"]
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Latest Current", f"{df.iloc[-1]['Current (A)']:.2f} A")
+c2.metric("Demo Voltage", "5.00 V")
+c3.metric("Latest Power", f"{df.iloc[-1]['Power (W)']:.2f} W")
+c4.metric("Unusual Readings", f"{alerts} / {total}")
 
-    actual_flagged_percent = flagged / total * 100
-
-    m1, m2, m3, m4 = st.columns(4)
-
-    m1.metric("Readings Analysed", total)
-    m2.metric("Readings Modified", st.session_state["sp_modified"])
-    m3.metric("ML Unusual Readings", flagged)
-    m4.metric("ML Unusual Share", f"{actual_flagged_percent:.1f}%")
-
-    risk_level = st.session_state["sp_risk"]
-
-    st.subheader("🚦 Overall Simulation Risk")
-
-    if risk_level == "HIGH":
-        st.error(
-            f"HIGH REVIEW PRIORITY — {actual_flagged_percent:.1f}% "
-            "of simulated readings were flagged by the ML model."
-        )
-    elif risk_level == "MEDIUM":
-        st.warning(
-            f"MEDIUM REVIEW PRIORITY — {actual_flagged_percent:.1f}% "
-            "of simulated readings were flagged by the ML model."
-        )
-    else:
-        st.success(
-            f"LOW REVIEW PRIORITY — {actual_flagged_percent:.1f}% "
-            "of simulated readings were flagged by the ML model."
-        )
-
-    st.caption(
-        "Risk categories are demo review thresholds, not validated "
-        "electrical risk probabilities. An ML outlier is not proof "
-        "of a real fault."
+# ---------- ALERT ----------
+if overall_status == "UNUSUAL INPUT":
+    st.error(
+        f"⚠️ Unusual input detected in this simulation. "
+        f"{alerts} of {total} readings crossed 0.90 A."
     )
-
-    # --------------------------------------------------
-    # BEFORE VS AFTER
-    # --------------------------------------------------
-    st.subheader("📈 Original vs Simulated Data")
-
-    chart_col = st.selectbox(
-        "Select measurement for comparison",
-        options=selected_columns,
-        key="comparison_column"
+else:
+    st.success(
+        "✅ No readings crossed the configured 0.90 A threshold "
+        "in this simulation."
     )
-
-    comparison = pd.DataFrame({
-        "Reading Number": results["Reading Number"],
-        "Original": original[chart_col].to_numpy(),
-        "Simulated": results[chart_col].to_numpy()
-    })
-
-    comparison_long = comparison.melt(
-        id_vars="Reading Number",
-        var_name="Dataset",
-        value_name=chart_col
-    )
-
-    fig = px.line(
-        comparison_long,
-        x="Reading Number",
-        y=chart_col,
-        color="Dataset",
-        color_discrete_map={
-            "Original": "#22C55E",
-            "Simulated": "#F43F5E"
-        },
-        title=f"{chart_col}: Original vs Simulated",
-        template="plotly_dark"
-    )
-
-    fig.update_layout(
-        paper_bgcolor="#080F1E",
-        plot_bgcolor="#111C30",
-        font_color="#F8FAFC",
-        legend_title_text="Dataset"
-    )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # --------------------------------------------------
-    # ML RESULT DISTRIBUTION
-    # --------------------------------------------------
-    st.subheader("🧠 ML Anomaly Detection")
-
-    left, right = st.columns(2)
-
-    with left:
-        st.markdown("**Original dataset**")
-        st.metric("Originally flagged", baseline_flagged)
-
-    with right:
-        st.markdown("**Simulated dataset**")
-        st.metric("Flagged after simulation", flagged)
-
-    st.caption(
-        "Isolation Forest is trained on the uploaded data. "
-        "Its outlier proportion depends on the selected model setting "
-        "and the distribution of the uploaded measurements."
-    )
-
-    # --------------------------------------------------
-    # TABLE
-    # --------------------------------------------------
-    st.subheader("📋 Detailed Results")
-
-    def colour_ml(value):
-        if value == "Unusual":
-            return (
-                "background-color: #991B1B; "
-                "color: #FFFFFF; font-weight: bold"
-            )
-        return (
-            "background-color: #166534; "
-            "color: #FFFFFF; font-weight: bold"
-        )
-
-    styled_results = results.style.map(
-        colour_ml,
-        subset=["Simulated ML Result"]
-    )
-
-    st.dataframe(
-        styled_results,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # --------------------------------------------------
-    # DOWNLOAD
-    # --------------------------------------------------
-    st.subheader("📥 Export Simulation Report")
-
-    csv_data = results.to_csv(index=False).encode("utf-8")
-
-    st.download_button(
-        "⬇ Download Full Simulation Results (CSV)",
-        data=csv_data,
-        file_name="shadowpulse_simulation_results.csv",
-        mime="text/csv",
-        use_container_width=True
-    )
-
-    if st.button("🔄 Reset Simulation"):
-        st.session_state.pop("sp_results", None)
-        st.session_state.pop("sp_filename", None)
-        st.session_state.pop("sp_selected", None)
-        st.session_state.pop("sp_modified", None)
-        st.session_state.pop("sp_flagged", None)
-        st.session_state.pop("sp_original_flagged", None)
-        st.session_state.pop("sp_risk", None)
-        st.session_state.pop("sp_anomaly_percent", None)
-        st.session_state.pop("sp_severity", None)
-        st.rerun()
-
-# ==================================================
-# FOOTER
-# ==================================================
-st.divider()
 
 st.caption(
-    "ShadowPulse AI | Educational simulation prototype | "
-    "Uses uploaded data and synthetic modifications. "
-    "Not a substitute for real electrical safety monitoring."
+    f"Scenario: {st.session_state.last_scenario} | "
+    f"Last run: {st.session_state.last_run} | "
+    f"Mean current: {avg_current:.3f} A | "
+    f"Maximum current: {max_current:.3f} A | "
+    f"Mean demo power: {avg_power:.3f} W"
+)
+
+# ---------- CURRENT GRAPH ----------
+st.markdown("### 📈 Current Monitoring")
+
+fig_current = px.line(
+    display_df,
+    x="Reading",
+    y="Current (A)",
+    markers=True,
+    title="Simulated Current Readings"
+)
+fig_current.add_hline(
+    y=0.90,
+    line_dash="dash",
+    annotation_text="Unusual input threshold: 0.90 A"
+)
+fig_current.update_layout(
+    paper_bgcolor="#10243A",
+    plot_bgcolor="#10243A",
+    font_color="#F4F7FB",
+    xaxis_title="Reading number",
+    yaxis_title="Current (A)"
+)
+st.plotly_chart(fig_current, use_container_width=True)
+
+# ---------- POWER GRAPH ----------
+st.markdown("### ⚡ Power Monitoring")
+
+fig_power = px.area(
+    display_df,
+    x="Reading",
+    y="Power (W)",
+    title="Calculated Demo Power (Voltage × Current)"
+)
+fig_power.update_layout(
+    paper_bgcolor="#10243A",
+    plot_bgcolor="#10243A",
+    font_color="#F4F7FB"
+)
+st.plotly_chart(fig_power, use_container_width=True)
+
+# ---------- CATEGORY SUMMARY ----------
+st.markdown("### 🔎 Load Category Summary")
+
+category_counts = df["Detected Category"].value_counts().reset_index()
+category_counts.columns = ["Load Category", "Number of Readings"]
+
+col_left, col_right = st.columns(2)
+
+with col_left:
+    st.dataframe(category_counts, use_container_width=True, hide_index=True)
+
+with col_right:
+    fig_category = px.pie(
+        category_counts,
+        names="Load Category",
+        values="Number of Readings",
+        title="Detected Load Categories"
+    )
+    fig_category.update_layout(
+        paper_bgcolor="#10243A",
+        font_color="#F4F7FB"
+    )
+    st.plotly_chart(fig_category, use_container_width=True)
+
+# ---------- READINGS TABLE ----------
+st.markdown("### 🧾 Sensor Readings Table")
+st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+# ---------- DOWNLOAD ----------
+csv_data = df.to_csv(index=False).encode("utf-8")
+
+st.download_button(
+    label="⬇ Download Simulation Report",
+    data=csv_data,
+    file_name="shadowpulse_simulation_report.csv",
+    mime="text/csv"
+)
+
+st.markdown("---")
+st.caption(
+    "Demo limitation: ADC readings, current, and voltage are simulated. "
+    "No physical current sensor is connected. This threshold demo is "
+    "not a certified electrical protection or fault-detection system."
 )
