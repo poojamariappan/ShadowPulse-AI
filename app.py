@@ -1,11 +1,5 @@
-import time
-import random
-from datetime import datetime
-
-import numpy as np
-import pandas as pd
-import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="ShadowPulse AI",
@@ -13,278 +7,143 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------- CONTRASTING DASHBOARD STYLE ----------
+WOKWI_URL = "https://wokwi.com/projects/478774244281971713"
+
 st.markdown("""
 <style>
 .stApp {
-    background: #071321;
-    color: #F4F7FB;
+    background-color: #081522;
+    color: #F5F7FA;
 }
 [data-testid="stSidebar"] {
-    background: #10243A;
+    background-color: #11283D;
 }
 h1, h2, h3, p, label {
-    color: #F4F7FB;
+    color: #F5F7FA;
 }
-[data-testid="stMetric"] {
-    background: #102B46;
-    padding: 18px;
-    border-radius: 12px;
-    border: 1px solid #284966;
-}
-[data-testid="stMetricValue"] {
-    color: #4DE2C5;
-}
-.stButton > button {
-    background: #4DE2C5;
-    color: #071321;
-    border-radius: 8px;
+.stButton button, .stLinkButton a {
+    background-color: #36E0C1;
+    color: #081522 !important;
     border: none;
+    border-radius: 8px;
     font-weight: bold;
-    width: 100%;
+}
+.panel {
+    background: #11283D;
+    border: 1px solid #28465D;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+.small {
+    color: #B5C8D8;
+    font-size: 14px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ---------- HEADER ----------
 st.title("⚡ ShadowPulse AI")
-st.subheader("Virtual Electrical Load Monitoring & Anomaly Detection")
-st.caption(
-    "ESP32 Wokwi-inspired simulation | Synthetic readings only | "
-    "Not connected to a physical sensor"
+st.subheader("Virtual Electrical Load Monitoring")
+st.write(
+    "ESP32 simulation dashboard powered by your Wokwi project."
 )
 
-# ---------- SIDEBAR ----------
-st.sidebar.title("Simulation Controls")
-
-load_name = st.sidebar.selectbox(
-    "Choose load category",
-    ["Auto Detect", "Lamp-like", "Fan-like", "Motor-like"]
+st.sidebar.title("Navigation")
+page = st.sidebar.radio(
+    "Choose page",
+    ["Dashboard", "Wokwi Simulation", "About Project"]
 )
 
-simulation_mode = st.sidebar.selectbox(
-    "Simulation scenario",
-    [
-        "Normal Operation",
-        "Variable Input",
-        "Unusual Input"
-    ]
-)
+if page == "Dashboard":
+    st.markdown("### Project Overview")
 
-reading_count = st.sidebar.slider(
-    "Number of readings",
-    min_value=10,
-    max_value=100,
-    value=30,
-    step=10
-)
+    col1, col2 = st.columns(2)
 
-run_button = st.sidebar.button("▶ Run Simulation")
-st.sidebar.caption("Each reading represents one simulated second.")
+    with col1:
+        st.markdown("""
+        <div class="panel">
+            <h3>ESP32 Virtual Sensor</h3>
+            <p class="small">
+            Reads a simulated analog input on GPIO 32.
+            </p>
+            <h2>GPIO 32</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-# ---------- SENSOR SIMULATION ----------
-def generate_readings(count, scenario):
-    rows = []
-    raw_values = []
+    with col2:
+        st.markdown("""
+        <div class="panel">
+            <h3>Monitoring Logic</h3>
+            <p class="small">
+            Demo current is calculated from the ADC value.
+            </p>
+            <h2>0.90 A threshold</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-    for i in range(count):
-        # Simulates ESP32 analogRead(GPIO 32), 12-bit range
-        if scenario == "Normal Operation":
-            raw = random.randint(250, 2100)
-        elif scenario == "Variable Input":
-            raw = random.randint(500, 3000)
-        else:
-            # Generate some high inputs to demonstrate alerts
-            if random.random() < 0.45:
-                raw = random.randint(2500, 4095)
-            else:
-                raw = random.randint(800, 2500)
-
-        # Same conversion idea as the Wokwi sketch
-        current = (raw / 4095.0) * 1.5
-        voltage = 5.0
-        power = voltage * current
-
-        if current < 0.28:
-            detected_load = "Lamp-like"
-        elif current < 0.48:
-            detected_load = "Fan-like"
-        else:
-            detected_load = "Motor-like"
-
-        anomaly = current > 0.90
-        status = "UNUSUAL INPUT" if anomaly else "Normal"
-
-        rows.append({
-            "Reading": i + 1,
-            "Raw ADC": raw,
-            "Current (A)": round(current, 3),
-            "Voltage (V)": voltage,
-            "Power (W)": round(power, 3),
-            "Detected Category": detected_load,
-            "Status": status
-        })
-        raw_values.append(raw)
-
-    return pd.DataFrame(rows)
-
-# ---------- RUN AND SAVE RESULTS ----------
-if "history" not in st.session_state:
-    st.session_state.history = pd.DataFrame()
-
-if run_button:
-    st.session_state.current_data = generate_readings(
-        reading_count, simulation_mode
-    )
-    st.session_state.last_run = datetime.now().strftime(
-        "%d-%m-%Y %H:%M:%S"
-    )
-    st.session_state.last_scenario = simulation_mode
-
-if "current_data" not in st.session_state:
-    st.session_state.current_data = generate_readings(
-        reading_count, "Normal Operation"
-    )
-    st.session_state.last_run = "Preview only"
-    st.session_state.last_scenario = "Normal Operation"
-
-df = st.session_state.current_data.copy()
-
-# ---------- FILTER DISPLAY CATEGORY ----------
-if load_name != "Auto Detect":
-    display_df = df[df["Detected Category"] == load_name].copy()
-    if display_df.empty:
-        display_df = df.copy()
-        st.info(
-            "No readings matched that category in this run. "
-            "Showing all readings instead."
-        )
-else:
-    display_df = df.copy()
-
-# ---------- METRICS ----------
-total = len(df)
-alerts = int((df["Status"] == "UNUSUAL INPUT").sum())
-normal = total - alerts
-alert_percentage = (alerts / total * 100) if total else 0
-avg_current = df["Current (A)"].mean()
-max_current = df["Current (A)"].max()
-avg_power = df["Power (W)"].mean()
-
-if max_current > 0.90:
-    overall_status = "UNUSUAL INPUT"
-else:
-    overall_status = "Normal"
-
-st.markdown("### Live Simulation Summary")
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Latest Current", f"{df.iloc[-1]['Current (A)']:.2f} A")
-c2.metric("Demo Voltage", "5.00 V")
-c3.metric("Latest Power", f"{df.iloc[-1]['Power (W)']:.2f} W")
-c4.metric("Unusual Readings", f"{alerts} / {total}")
-
-# ---------- ALERT ----------
-if overall_status == "UNUSUAL INPUT":
-    st.error(
-        f"⚠️ Unusual input detected in this simulation. "
-        f"{alerts} of {total} readings crossed 0.90 A."
-    )
-else:
-    st.success(
-        "✅ No readings crossed the configured 0.90 A threshold "
-        "in this simulation."
+    st.info(
+        "This dashboard links to your Wokwi simulation. "
+        "It does not receive live sensor readings automatically."
     )
 
-st.caption(
-    f"Scenario: {st.session_state.last_scenario} | "
-    f"Last run: {st.session_state.last_run} | "
-    f"Mean current: {avg_current:.3f} A | "
-    f"Maximum current: {max_current:.3f} A | "
-    f"Mean demo power: {avg_power:.3f} W"
-)
-
-# ---------- CURRENT GRAPH ----------
-st.markdown("### 📈 Current Monitoring")
-
-fig_current = px.line(
-    display_df,
-    x="Reading",
-    y="Current (A)",
-    markers=True,
-    title="Simulated Current Readings"
-)
-fig_current.add_hline(
-    y=0.90,
-    line_dash="dash",
-    annotation_text="Unusual input threshold: 0.90 A"
-)
-fig_current.update_layout(
-    paper_bgcolor="#10243A",
-    plot_bgcolor="#10243A",
-    font_color="#F4F7FB",
-    xaxis_title="Reading number",
-    yaxis_title="Current (A)"
-)
-st.plotly_chart(fig_current, use_container_width=True)
-
-# ---------- POWER GRAPH ----------
-st.markdown("### ⚡ Power Monitoring")
-
-fig_power = px.area(
-    display_df,
-    x="Reading",
-    y="Power (W)",
-    title="Calculated Demo Power (Voltage × Current)"
-)
-fig_power.update_layout(
-    paper_bgcolor="#10243A",
-    plot_bgcolor="#10243A",
-    font_color="#F4F7FB"
-)
-st.plotly_chart(fig_power, use_container_width=True)
-
-# ---------- CATEGORY SUMMARY ----------
-st.markdown("### 🔎 Load Category Summary")
-
-category_counts = df["Detected Category"].value_counts().reset_index()
-category_counts.columns = ["Load Category", "Number of Readings"]
-
-col_left, col_right = st.columns(2)
-
-with col_left:
-    st.dataframe(category_counts, use_container_width=True, hide_index=True)
-
-with col_right:
-    fig_category = px.pie(
-        category_counts,
-        names="Load Category",
-        values="Number of Readings",
-        title="Detected Load Categories"
+    st.link_button(
+        "▶ Open Wokwi Simulation",
+        WOKWI_URL,
+        use_container_width=True
     )
-    fig_category.update_layout(
-        paper_bgcolor="#10243A",
-        font_color="#F4F7FB"
+
+elif page == "Wokwi Simulation":
+    st.markdown("### Your ESP32 Simulation")
+    st.write(
+        "Try opening the simulator below. If it does not load, "
+        "open the project directly using the button."
     )
-    st.plotly_chart(fig_category, use_container_width=True)
 
-# ---------- READINGS TABLE ----------
-st.markdown("### 🧾 Sensor Readings Table")
-st.dataframe(display_df, use_container_width=True, hide_index=True)
+    components.iframe(
+        WOKWI_URL + "?embed=1",
+        height=600,
+        scrolling=True
+    )
 
-# ---------- DOWNLOAD ----------
-csv_data = df.to_csv(index=False).encode("utf-8")
+    st.link_button(
+        "Open Wokwi in a New Tab",
+        WOKWI_URL,
+        use_container_width=True
+    )
 
-st.download_button(
-    label="⬇ Download Simulation Report",
-    data=csv_data,
-    file_name="shadowpulse_simulation_report.csv",
-    mime="text/csv"
-)
+    st.caption(
+        "Wokwi embedding may be restricted by the browser or "
+        "Wokwi. The direct project link is the fallback."
+    )
 
-st.markdown("---")
-st.caption(
-    "Demo limitation: ADC readings, current, and voltage are simulated. "
-    "No physical current sensor is connected. This threshold demo is "
-    "not a certified electrical protection or fault-detection system."
-)
+elif page == "About Project":
+    st.markdown("### About ShadowPulse AI")
+
+    st.markdown("""
+    <div class="panel">
+        <h3>Project Purpose</h3>
+        <p>
+        Demonstrate virtual electrical-load monitoring using an
+        ESP32-based simulation.
+        </p>
+        <h3>How the Wokwi code works</h3>
+        <ul>
+            <li>Reads analog input from GPIO 32.</li>
+            <li>Calculates demo current from the ADC value.</li>
+            <li>Assumes a demo voltage of 5 V.</li>
+            <li>Calculates demo power using voltage × current.</li>
+            <li>Labels readings as normal or unusual based on 0.90 A.</li>
+        </ul>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.link_button(
+        "View Wokwi Project",
+        WOKWI_URL
+    )
+
+    st.warning(
+        "Current and voltage are simulated values, not readings "
+        "from a physical current sensor. This project is a demo, "
+        "not a certified electrical protection system."
+    )
