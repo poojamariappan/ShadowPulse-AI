@@ -232,6 +232,40 @@ if st.button("🗑️ Clear History"):
     st.session_state.reading_no = 0
     st.rerun()
 
+# ---------- ENERGY ANALYTICS ----------
+st.subheader("⚡ Energy Analytics")
+
+hours_used = st.slider(
+    "Estimated operating hours per day",
+    min_value=1,
+    max_value=24,
+    value=8
+)
+
+tariff = st.number_input(
+    "Electricity cost per kWh (₹)",
+    min_value=0.0,
+    value=8.0,
+    step=0.5
+)
+
+power_kw = current_reading["Power (W)"] / 1000
+
+daily_energy = power_kw * hours_used
+monthly_energy = daily_energy * 30
+monthly_cost = monthly_energy * tariff
+
+a, b, c = st.columns(3)
+
+a.metric("Estimated Daily Energy", f"{daily_energy:.3f} kWh")
+b.metric("Estimated Monthly Energy", f"{monthly_energy:.2f} kWh")
+c.metric("Estimated Monthly Cost", f"₹{monthly_cost:.2f}")
+
+st.caption(
+    "Estimates assume the latest power reading stays constant "
+    "for the selected operating hours. Actual usage and bills may vary."
+)
+
 st.divider()
 
 st.caption(
