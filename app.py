@@ -23,16 +23,73 @@ if "threshold" not in st.session_state:
     st.session_state.threshold = 1000.0
 
 # ---------------- CSS ----------------
+
 st.markdown("""
 <style>
+/* Main page background and text */
 .stApp {
-    background-color: #f5f7fb;
+    background-color: #f4f7fb;
+    color: #1e293b;
 }
+
+/* Main content text */
+.stApp p,
+.stApp label,
+.stApp li,
+.stApp span {
+    color: #334155;
+}
+
+/* Headings */
+.stApp h1,
+.stApp h2,
+.stApp h3 {
+    color: #0f172a !important;
+}
+
+/* Metric cards */
 [data-testid="stMetric"] {
-    background-color: white;
-    padding: 15px;
+    background-color: #ffffff;
+    padding: 18px;
     border-radius: 12px;
-    border: 1px solid #e5e7eb;
+    border: 1px solid #dbe3ef;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+[data-testid="stMetricLabel"] {
+    color: #475569 !important;
+}
+
+[data-testid="stMetricValue"] {
+    color: #0f172a !important;
+}
+
+/* Sidebar */
+[data-testid="stSidebar"] {
+    background-color: #172033;
+}
+
+[data-testid="stSidebar"] p,
+[data-testid="stSidebar"] label,
+[data-testid="stSidebar"] span {
+    color: #f8fafc !important;
+}
+
+/* Links and buttons */
+.stLinkButton a {
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* Data tables */
+[data-testid="stDataFrame"] {
+    background-color: #ffffff;
+    border-radius: 10px;
+}
+
+/* Dividers */
+hr {
+    border-color: #dbe3ef;
 }
 </style>
 """, unsafe_allow_html=True)
