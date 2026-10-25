@@ -1,150 +1,96 @@
-
 import streamlit as st
-import streamlit.components.v1 as components
+import pandas as pd
+import numpy as np
+import plotly.express as px
+from datetime import datetime
 
-st.set_page_config(
-    page_title="ShadowPulse AI",
-    page_icon="⚡",
-    layout="wide"
-)
+st.set_page_config(page_title="ShadowPulse AI", page_icon="⚡", layout="wide")
 
-WOKWI_URL = "https://wokwi.com/projects/478774244281971713"
-
+# ---------- Styling ----------
 st.markdown("""
 <style>
-.stApp {
-    background-color: #081522;
-    color: #F5F7FA;
+.stApp { background: #07111f; color: #e8f1ff; }
+[data-testid="stSidebar"] { background: #0b1728; }
+.block-container { padding-top: 1.4rem; }
+div[data-testid="stMetric"] {
+  background: #0d1d31; border: 1px solid #17344e;
+  padding: 14px; border-radius: 12px;
 }
-[data-testid="stSidebar"] {
-    background-color: #11283D;
-}
-h1, h2, h3, p, label {
-    color: #F5F7FA;
-}
-.stButton button, .stLinkButton a {
-    background-color: #36E0C1;
-    color: #081522 !important;
-    border: none;
-    border-radius: 8px;
-    font-weight: bold;
-}
-.panel {
-    background: #11283D;
-    border: 1px solid #28465D;
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 15px;
-}
-.small {
-    color: #B5C8D8;
-    font-size: 14px;
-}
+h1, h2, h3 { color: #e8f1ff; }
+.small-muted { color: #9fb2c8; }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("⚡ ShadowPulse AI")
-st.subheader("Virtual Electrical Load Monitoring")
-st.write(
-    "ESP32 simulation dashboard powered by your Wokwi project."
-)
+st.caption("Software-based electrical load monitoring • simulated readings • explainable anomaly rules")
 
-st.sidebar.title("Navigation")
+# ---------- Session state ----------
+if "readings" not in st.session_state:
+    st.session_state.readings = []
+if "alerts" not in st.session_state:
+    st.session_state.alerts = []
+if "reading_id" not in st.session_state:
+    st.session_state.reading_id = 0
+
+LOADS = {
+    "LED Lamp": {"nominal_w": 12, "voltage": 230, "current": 0.06, "category": "Lighting"},
+    "Ceiling Fan": {"nominal_w": 65, "voltage": 230, "current": 0.30, "category": "Motor"},
+    "Laptop Charger": {"nominal_w": 90, "voltage": 230, "current": 0.42, "category": "Electronics"},
+    "Water Pump": {"nominal_w": 500, "voltage": 230, "current": 2.20, "category": "Motor"},
+    "Heater": {"nominal_w": 1000, "voltage": 230, "current": 4.50, "category": "Heating"},
+    "Custom Load": {"nominal_w": 150, "voltage": 230, "current": 0.70, "category": "Other"},
+}
+
+def classify_load(power_w):
+    if power_w < 30:
+        return "Low-power / Lighting"
+    if power_w < 150:
+        return "Electronics / Small appliance"
+    if power_w < 750:
+        return "Motor / Medium appliance"
+    return "High-power appliance"
+
+def generate_reading(load_name, anomaly_mode=False, voltage_nominal=230, threshold_w=800, threshold_current=5.0):
+    spec = LOADS[load_name]
+    voltage = float(np.clip(np.random.normal(voltage_nominal, 2.0), 205, 250))
+    base_power = spec["nominal_w"]
+    multiplier = np.random.uniform(0.92, 1.08)
+    if anomaly_mode:
+        multiplier = np.random.uniform(1.8, 2.5)
+    power = max(1.0, base_power * multiplier)
+    current = power / max(voltage, 1)
+    energy = power / 1000.0 * (1.0 / 60.0)  # simulated one-minute interval, kWh
+    issues = []
+    if voltage < 210 or voltage > 245:
+        issues.append("Voltage outside configured range")
+    if power > threshold_w:
+        issues.append("Power threshold exceeded")
+    if current > threshold_current:
+        issues.append("Current threshold exceeded")
+    status = "ANOMALY" if issues else "Normal"
+    st.session_state.reading_id += 1
+    row = {
+        "Reading": st.session_state.reading_id,
+        "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Load": load_name,
+        "Category": spec["category"],
+        "Voltage (V)": round(voltage, 2),
+        "Current (A)": round(current, 3),
+        "Power (W)": round(power, 2),
+        "Energy (kWh)": round(energy, 5),
+        "Estimated Type": classify_load(power),
+        "Status": status,
+        "Reason": "; ".join(issues) if issues else "No rule triggered",
+    }
+    st.session_state.readings.append(row)
+    if status == "ANOMALY":
+        st.session_state.alerts.insert(0, row.copy())
+    return row
+
+# ---------- Sidebar controls ----------
+st.sidebar.title("Control Panel")
 page = st.sidebar.radio(
-    "Choose page",
-    ["Dashboard", "Wokwi Simulation", "About Project"]
+    "Navigate",
+    ["Dashboard", "Live Simulation", "Load Analysis", "Energy Analytics", "Anomaly Alerts", "History", "Settings"]
 )
-
-if page == "Dashboard":
-    st.markdown("### Project Overview")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("""
-        <div class="panel">
-            <h3>ESP32 Virtual Sensor</h3>
-            <p class="small">
-            Reads a simulated analog input on GPIO 32.
-            </p>
-            <h2>GPIO 32</h2>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("""
-        <div class="panel">
-            <h3>Monitoring Logic</h3>
-            <p class="small">
-            Demo current is calculated from the ADC value.
-            </p>
-            <h2>0.90 A threshold</h2>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.info(
-        "This dashboard links to your Wokwi simulation. "
-        "It does not receive live sensor readings automatically."
-    )
-
-    st.link_button(
-        "▶ Open Wokwi Simulation",
-        WOKWI_URL,
-        use_container_width=True
-    )
-
-elif page == "Wokwi Simulation":
-    st.markdown("### Your ESP32 Simulation")
-    st.write(
-        "Try opening the simulator below. If it does not load, "
-        "open the project directly using the button."
-    )
-
-    components.iframe(
-        WOKWI_URL + "?embed=1",
-        height=600,
-        scrolling=True
-    )
-
-    st.link_button(
-        "Open Wokwi in a New Tab",
-        WOKWI_URL,
-        use_container_width=True
-    )
-
-    st.caption(
-        "Wokwi embedding may be restricted by the browser or "
-        "Wokwi. The direct project link is the fallback."
-    )
-
-elif page == "About Project":
-    st.markdown("### About ShadowPulse AI")
-
-    st.markdown("""
-    <div class="panel">
-        <h3>Project Purpose</h3>
-        <p>
-        Demonstrate virtual electrical-load monitoring using an
-        ESP32-based simulation.
-        </p>
-        <h3>How the Wokwi code works</h3>
-        <ul>
-            <li>Reads analog input from GPIO 32.</li>
-            <li>Calculates demo current from the ADC value.</li>
-            <li>Assumes a demo voltage of 5 V.</li>
-            <li>Calculates demo power using voltage × current.</li>
-            <li>Labels readings as normal or unusual based on 0.90 A.</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.link_button(
-        "View Wokwi Project",
-        WOKWI_URL
-    )
-
-    st.warning(
-        "Current and voltage are simulated values, not readings "
-        "from a physical current sensor. This project is a demo, "
-        "not a certified electrical protection system."
-    )
+st.sidebar.divider()
