@@ -24,75 +24,87 @@ if "threshold" not in st.session_state:
 
 # ---------------- CSS ----------------
 
-st.markdown("""
-<style>
-/* Main page background and text */
-.stApp {
-    background-color: #f4f7fb;
-    color: #1e293b;
-}
 
-/* Main content text */
-.stApp p,
-.stApp label,
-.stApp li,
-.stApp span {
-    color: #334155;
-}
+def show_metrics(reading):
+    st.markdown("""
+    <style>
+    .metric-card {
+        padding: 20px;
+        border-radius: 16px;
+        min-height: 145px;
+        border: 1px solid transparent;
+        box-shadow: 0 5px 14px rgba(15, 23, 42, 0.06);
+    }
 
-/* Headings */
-.stApp h1,
-.stApp h2,
-.stApp h3 {
-    color: #0f172a !important;
-}
+    .metric-label {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 12px;
+    }
 
-/* Metric cards */
-[data-testid="stMetric"] {
-    background-color: #ffffff;
-    padding: 18px;
-    border-radius: 12px;
-    border: 1px solid #dbe3ef;
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
-}
+    .metric-value {
+        font-size: 27px;
+        font-weight: 750;
+        margin-bottom: 9px;
+    }
 
-[data-testid="stMetricLabel"] {
-    color: #475569 !important;
-}
+    .metric-status {
+        font-size: 13px;
+        font-weight: 500;
+    }
 
-[data-testid="stMetricValue"] {
-    color: #0f172a !important;
-}
+    .voltage-card {
+        background: #e0f2fe;
+        border-color: #bfdbfe;
+        color: #075985;
+    }
 
-/* Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #172033;
-}
+    .current-card {
+        background: #f3e8ff;
+        border-color: #e9d5ff;
+        color: #6b21a8;
+    }
 
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] span {
-    color: #f8fafc !important;
-}
+    .power-card {
+        background: #ffedd5;
+        border-color: #fed7aa;
+        color: #9a3412;
+    }
 
-/* Links and buttons */
-.stLinkButton a {
-    border-radius: 8px;
-    font-weight: 600;
-}
+    .energy-card {
+        background: #d1fae5;
+        border-color: #a7f3d0;
+        color: #065f46;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-/* Data tables */
-[data-testid="stDataFrame"] {
-    background-color: #ffffff;
-    border-radius: 10px;
-}
+    c1, c2, c3, c4 = st.columns(4)
 
-/* Dividers */
-hr {
-    border-color: #dbe3ef;
-}
-</style>
-""", unsafe_allow_html=True)
+    cards = [
+        (c1, "voltage-card", "⚡", "Voltage",
+         f"{reading['Voltage (V)']} V", "Normal range"),
+        (c2, "current-card", "◉", "Current",
+         f"{reading['Current (A)']} A", "Sensor reading"),
+        (c3, "power-card", "〽️", "Power",
+         f"{reading['Power (W)']} W", "Power consumption"),
+        (c4, "energy-card", "🍃", "Energy",
+         f"{reading['Energy (kWh)']} kWh", "Energy reading")
+    ]
+
+    for col, css_class, emoji, label, value, status in cards:
+        with col:
+            st.markdown(
+                f"""
+                <div class="metric-card {css_class}">
+                    <div class="metric-label">{emoji} {label}</div>
+                    <div class="metric-value">{value}</div>
+                    <div class="metric-status">● {status}</div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("⚡ ShadowPulse AI")
